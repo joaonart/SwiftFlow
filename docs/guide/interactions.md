@@ -247,7 +247,7 @@ SwiftFlow(nodes: nodes, edges: edges, ..., selectNodesOnDrag: false) { ... }
 | **Cmd+C / Cmd+V**    | Copy / paste selected nodes               |
 | **Cmd+Z**            | Undo                                      |
 | **Cmd+Shift+Z**      | Redo                                      |
-| **Delete / Backspace** | Delete selected nodes and edges           |
+| **Delete / Backspace** | Delete selected nodes and edges (deletable only; deleting a node removes its incident edges) |
 | **Arrow keys**       | Nudge selected nodes by 1pt               |
 | **Shift+Arrow**      | Nudge selected nodes by 10pt              |
 

@@ -223,9 +223,40 @@ struct ViewportControllerTests {
   @MainActor
   @Test func deleteElements() {
     let instance = SwiftFlowInstance()
-    var removedEdgeIds: [Any]?
-    instance._applyEdgeChanges = { changes in removedEdgeIds = changes }
-    instance.deleteElements(edgeIds: ["e1", "e2"])
-    #expect(removedEdgeIds != nil)
+    var removedNodes: [String] = []
+    var removedEdges: [String] = []
+    instance._deleteElements = { nodeIds, edgeIds in
+      removedNodes = nodeIds
+      removedEdges = edgeIds
+    }
+    instance.deleteElements(nodeIds: ["n1"], edgeIds: ["e1", "e2"])
+    #expect(removedNodes == ["n1"])
+    #expect(removedEdges == ["e1", "e2"])
   }
+
+  @MainActor
+  @Test func viewportCommandsReachCanvasAndPreserveObserver() {
+    let instance = SwiftFlowInstance()
+    var canvasViewport = Viewport.identity
+    var observed: [Viewport] = []
+    instance._applyViewport = { canvasViewport = $0 }
+    instance.onViewportChange = { observed.append($0) }
+    instance.viewSize = CGSize(width: 800, height: 600)
+    instance.setCenter(x: 100, y: 200, zoom: 2, animated: false)
+    #expect(canvasViewport == instance.viewport)
+    #expect(observed == [canvasViewport])
+    instance.reset(animated: false)
+    #expect(canvasViewport == .identity)
+    #expect(observed.count == 2)
+  }
+  @MainActor
+  @Test func fitViewCentersRequestedNodes() {
+    let instance = SwiftFlowInstance()
+    instance.viewSize = CGSize(width: 800, height: 600)
+    instance.fitView(nodes: [Node(id: "1", position: XYPosition(x: -100, y: 70), data: "A")],
+      nodeSizes: ["1": CGSize(width: 100, height: 50)])
+    let center = instance.flowToScreenPosition(CGPoint(x: -50, y: 95))
+    #expect(center == CGPoint(x: 400, y: 300))
+  }
+
 }

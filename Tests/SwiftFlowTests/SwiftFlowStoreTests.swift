@@ -210,4 +210,38 @@ struct SwiftFlowStoreTests {
     store.onNodesChange([.selection(id: "1", selected: false)])
     #expect(store.selectedNodeIds == ["2"])
   }
+  @MainActor
+  @Test func selectionTracksInitialAndDirectChanges() {
+    let store = SwiftFlowStore(
+      nodes: [Node(id: "1", position: .zero, data: "A", selected: true)],
+      edges: [Edge<EmptyEdgeData>(id: "e1", source: "1", target: "2", selected: true)])
+    #expect(store.selectedNodeIds == ["1"])
+    #expect(store.selectedEdgeIds == ["e1"])
+    store.nodes[0].selected = false
+    store.edges = []
+    #expect(store.selectedNodeIds.isEmpty)
+    #expect(store.selectedEdgeIds.isEmpty)
+  }
+
+  @MainActor
+  @Test func deletingNodeRemovesIncidentEdgesAndRespectsProtectedNodes() {
+    let store = SwiftFlowStore(
+      nodes: [
+        Node(id: "1", position: .zero, data: "A"),
+        Node(id: "2", position: .zero, data: "B", deletable: false),
+        Node(id: "3", position: .zero, data: "C"),
+      ],
+      edges: [
+        Edge<EmptyEdgeData>(id: "out", source: "1", target: "2"),
+        Edge(id: "in", source: "3", target: "1"),
+        Edge(id: "loop", source: "1", target: "1"),
+        Edge(id: "keep", source: "2", target: "3"),
+      ])
+    let deleted = store.deleteElements(nodeIds: ["1", "2", "missing", "1"])
+    #expect(deleted.nodes.map(\.id) == ["1"])
+    #expect(Set(deleted.edges.map(\.id)) == ["in", "out", "loop"])
+    #expect(store.nodes.map(\.id) == ["2", "3"])
+    #expect(store.edges.map(\.id) == ["keep"])
+  }
+
 }

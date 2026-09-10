@@ -83,7 +83,7 @@ let changes = computeAutoLayout(nodes: nodes, edges: edges,
     algorithm: .forceDirected(iterations: 200, idealLength: 150, repulsion: 8000))
 ```
 
-More iterations produce better layouts but take longer. The async variant is recommended for `forceDirected` with large graphs.
+Zero or negative iterations leave positions unchanged. More iterations produce better layouts but take longer. The async variant is recommended for `forceDirected` with large graphs.
 
 ### Grid
 
@@ -171,3 +171,5 @@ struct FlowEditor: View {
 - `tree` layout is O(n + e) and suitable for graphs up to thousands of nodes
 - `forceDirected` layout is O(iterations * n²) in the worst case; use the async variant for graphs with 50+ nodes
 - `grid` layout is O(n) and suitable for any graph size
+
+Grid layouts clamp column counts below one to one. Column widths and row heights use the largest node in each column or row, preventing overlap between differently sized nodes. Tree layouts preserve input order within each level.

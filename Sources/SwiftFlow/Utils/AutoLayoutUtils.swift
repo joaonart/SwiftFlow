@@ -117,7 +117,8 @@ private func applyTreeLayout<T: Equatable & Sendable, E: Equatable & Sendable & 
 
   var children: [String: [String]] = [:]
   var hasParent: Set<String> = []
-  for edge in edges {
+  let nodeIds = Set(nodes.map(\.id))
+  for edge in edges where nodeIds.contains(edge.source) && nodeIds.contains(edge.target) {
     children[edge.source, default: []].append(edge.target)
     hasParent.insert(edge.target)
   }
@@ -130,8 +131,10 @@ private func applyTreeLayout<T: Equatable & Sendable, E: Equatable & Sendable & 
   var queue = roots.map { ($0, 0) }
   var visited = Set(roots)
 
-  while !queue.isEmpty {
-    let (nodeId, level) = queue.removeFirst()
+  var queueIndex = 0
+  while queueIndex < queue.count {
+    let (nodeId, level) = queue[queueIndex]
+    queueIndex += 1
     levels[nodeId] = level
     for child in children[nodeId] ?? [] where !visited.contains(child) {
       visited.insert(child)
@@ -146,42 +149,25 @@ private func applyTreeLayout<T: Equatable & Sendable, E: Equatable & Sendable & 
 
   // Group by level and position
   var levelNodes: [Int: [String]] = [:]
-  for (id, level) in levels { levelNodes[level, default: []].append(id) }
+  for node in nodes {
+    levelNodes[levels[node.id] ?? 0, default: []].append(node.id)
+  }
   let maxLevel = levelNodes.keys.max() ?? 0
 
   for level in 0...maxLevel {
     guard let ids = levelNodes[level] else { continue }
-    let count = CGFloat(ids.count)
-
+    let horizontal = direction == .leftToRight || direction == .rightToLeft
+    let sizes = ids.map { nodeSizes[$0] ?? CGSize(width: 150, height: 50) }
+    let lengths = sizes.map { horizontal ? $0.height : $0.width }
+    var offset = -(lengths.reduce(0, +) + CGFloat(ids.count - 1) * nodeSpacing) / 2
     for (i, nodeId) in ids.enumerated() {
       guard let index = nodes.firstIndex(where: { $0.id == nodeId }) else { continue }
-      let size = nodeSizes[nodeId] ?? CGSize(width: 150, height: 50)
-      let pos = CGFloat(i)
-      let totalWidth = count * (size.width + nodeSpacing) - nodeSpacing
-      let offset = -totalWidth / 2
-
-      switch direction {
-      case .topToBottom:
-        nodes[index].position = XYPosition(
-          x: offset + pos * (size.width + nodeSpacing),
-          y: CGFloat(level) * levelSpacing
-        )
-      case .leftToRight:
-        nodes[index].position = XYPosition(
-          x: CGFloat(level) * levelSpacing,
-          y: offset + pos * (size.height + nodeSpacing)
-        )
-      case .bottomToTop:
-        nodes[index].position = XYPosition(
-          x: offset + pos * (size.width + nodeSpacing),
-          y: CGFloat(maxLevel - level) * levelSpacing
-        )
-      case .rightToLeft:
-        nodes[index].position = XYPosition(
-          x: CGFloat(maxLevel - level) * levelSpacing,
-          y: offset + pos * (size.height + nodeSpacing)
-        )
-      }
+      let reverse = direction == .bottomToTop || direction == .rightToLeft
+      let levelOffset = CGFloat(reverse ? maxLevel - level : level) * levelSpacing
+      nodes[index].position = horizontal
+        ? XYPosition(x: levelOffset, y: offset)
+        : XYPosition(x: offset, y: levelOffset)
+      offset += lengths[i] + nodeSpacing
     }
   }
 }
@@ -195,7 +181,7 @@ private func applyForceDirectedLayout<T: Equatable & Sendable, E: Equatable & Se
   idealLength: CGFloat = 200,
   repulsion: CGFloat = 5000
 ) {
-  guard nodes.count > 1 else { return }
+  guard nodes.count > 1, iterations > 0 else { return }
 
   // Break symmetry when nodes overlap exactly
   for i in 0..<nodes.count {
@@ -290,11 +276,20 @@ private func applyGridLayout<T: Equatable & Sendable>(
   nodeSpacing: CGFloat = 50,
   nodeSizes: [String: CGSize] = [:]
 ) {
-  for (i, _) in nodes.enumerated() {
-    let size = nodeSizes[nodes[i].id] ?? CGSize(width: 150, height: 50)
-    nodes[i].position = XYPosition(
-      x: CGFloat(i % columns) * (size.width + nodeSpacing),
-      y: CGFloat(i / columns) * (size.height + nodeSpacing)
-    )
+  guard !nodes.isEmpty else { return }
+  let columns = min(max(columns, 1), nodes.count)
+  var widths = Array(repeating: CGFloat.zero, count: columns)
+  var heights = Array(repeating: CGFloat.zero, count: (nodes.count - 1) / columns + 1)
+  for (i, node) in nodes.enumerated() {
+    let size = nodeSizes[node.id] ?? CGSize(width: node.width ?? 150, height: node.height ?? 50)
+    widths[i % columns] = max(widths[i % columns], size.width)
+    heights[i / columns] = max(heights[i / columns], size.height)
+  }
+  var xOffsets = Array(repeating: CGFloat.zero, count: widths.count)
+  var yOffsets = Array(repeating: CGFloat.zero, count: heights.count)
+  for i in widths.indices.dropFirst() { xOffsets[i] = xOffsets[i - 1] + widths[i - 1] + nodeSpacing }
+  for i in heights.indices.dropFirst() { yOffsets[i] = yOffsets[i - 1] + heights[i - 1] + nodeSpacing }
+  for i in nodes.indices {
+    nodes[i].position = XYPosition(x: xOffsets[i % columns], y: yOffsets[i / columns])
   }
 }

@@ -13,6 +13,8 @@ SwiftFlow(
 ) { node in ... }
 ```
 
+While the instance is attached to a canvas, canvas state is mirrored into it (`viewport`, `viewSize`, `nodeSizes`), and viewport changes made through the instance — `setViewport`, `fitView`, `setCenter`, `zoomTo`, `reset` — are applied to the canvas immediately, even outside animations. `deleteElements` is routed through the canvas and honors its `onBeforeDelete`/`onDelete` behavior.
+
 ## Published Properties
 
 | Property     | Type                | Description                           |
@@ -54,7 +56,7 @@ public func fitView<T: Equatable & Sendable>(
 )
 ```
 
-Adjusts the viewport to frame all (or specific) nodes. Uses `FitViewOptions` for configuration.
+Adjusts the viewport to frame all (or specific) nodes. Uses `FitViewOptions` for configuration. The fitted content is centered in the viewport, including when the computed zoom is capped by `maxZoom`.
 
 ```swift
 // Fit all visible nodes
@@ -120,6 +122,22 @@ Resets the viewport to identity (`x: 0, y: 0, zoom: 1.0`).
 ```swift
 instance.reset()
 instance.reset(animated: false)
+```
+
+## Graph Editing
+
+### deleteElements(nodeIds:edgeIds:)
+
+```swift
+public func deleteElements(nodeIds: [String] = [], edgeIds: [String] = [])
+```
+
+Deletes the specified nodes and edges through the attached canvas. Deleting a node also removes every incident edge; explicitly requested elements are removed only when their `deletable` flag is `true`.
+
+```swift
+Button("Delete Selected Node") {
+    instance.deleteElements(nodeIds: ["node-1"])
+}
 ```
 
 ## Coordinate Conversion

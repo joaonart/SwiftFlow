@@ -118,6 +118,8 @@ let deleted = store.deleteElements(
 // deleted.edges contains removed edges
 ```
 
+Deletion respects each element's `deletable` flag, and deleting a node also removes every edge connected to it (including protected edges whose endpoint no longer exists), so no dangling connections are left behind.
+
 ## SwiftFlowProvider
 
 Wrap the canvas with `SwiftFlowProvider` to inject the store into the environment, making it available to deeply nested child views:

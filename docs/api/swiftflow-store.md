@@ -31,7 +31,7 @@ SwiftFlow(
 | `selectedNodeIds` | `Set<String>`    | IDs of currently selected nodes          |
 | `selectedEdgeIds` | `Set<String>`    | IDs of currently selected edges          |
 
-All properties are `@Published`, so SwiftUI views automatically re-render on changes.
+All properties are `@Published`, so SwiftUI views automatically re-render on changes. `selectedNodeIds` and `selectedEdgeIds` are kept in sync with the `nodes`/`edges` arrays on every mutation — through change helpers, `deleteElements`, and direct array edits alike.
 
 ## State Mutation Methods
 
@@ -177,7 +177,7 @@ public func deleteElements(
 ) -> (nodes: [Node<NodeData>], edges: [Edge<EdgeData>])
 ```
 
-Deletes nodes and edges by ID. Returns the deleted elements for undo/redo support.
+Deletes nodes and edges by ID, respecting `deletable` for explicitly requested elements. Deleting a node also removes all of its incident edges, including protected edges whose endpoint no longer exists. Returns all deleted elements for undo/redo support.
 
 ```swift
 let deleted = store.deleteElements(nodeIds: ["node-1"], edgeIds: ["edge-1"])

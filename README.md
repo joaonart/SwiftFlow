@@ -42,7 +42,7 @@ Or add it to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/aaurelions/SwiftFlow.git", from: "0.1.1")
+    .package(url: "https://github.com/aaurelions/SwiftFlow.git", from: "0.2.0")
 ]
 ```
 
@@ -384,7 +384,7 @@ Controls(position: .bottomLeft) {
 
 ### MiniMap
 
-Interactive overview map showing all nodes and the current viewport.
+Interactive overview map showing all nodes and the current viewport. Click and drag to pan the main viewport; with `pannable` and `zoomable` gestures track canvas interactivity (they are disabled while the canvas is non-interactive).
 
 ```swift
 // Default
@@ -413,7 +413,7 @@ MiniMap { props in
 | `width`             | `CGFloat`                     | `150`                | MiniMap width         |
 | `height`            | `CGFloat`                     | `100`                | MiniMap height        |
 | `pannable`          | `Bool`                        | `true`               | Click to pan viewport |
-| `zoomable`          | `Bool`                        | `false`              | Scroll to zoom        |
+| `zoomable`          | `Bool`                        | `false`              | Pinch/magnify to zoom |
 | `position`          | `PanelPosition`               | `.bottomRight`       | Panel position        |
 | `nodeContent`       | `(MiniMapNodeProps) -> View`  | `nil`                | Custom node view      |
 
@@ -813,7 +813,7 @@ Centralized state management class. Use it for simpler state handling.
 | `onConnect(_:)`                          | Create edge from connection          |
 | `getNode(id:)`                           | Look up node by ID                   |
 | `getEdge(id:)`                           | Look up edge by ID                   |
-| `deleteElements(nodeIds:edgeIds:)`       | Delete elements by ID                |
+| `deleteElements(nodeIds:edgeIds:)`       | Delete by ID (respects `deletable`, removes incident edges) |
 | `getNodesData(ids:)`                     | Get data for specific node IDs       |
 | `getNodeConnections(nodeId:handleType:)` | Get connections for a node           |
 | `nodesInitialized`                       | Whether all nodes have been measured |
@@ -999,7 +999,7 @@ When `extent` is `.parent`, the node cannot be dragged outside its parent node's
 
 ## ReactFlow Compatibility
 
-SwiftFlow adapts familiar ReactFlow concepts to SwiftUI-native APIs. Release 0.1.1 focuses on the core canvas, nodes, edges, handles, overlays, callbacks, graph utilities, serialization, theming, and auto layout; some ReactFlow-specific browser APIs are intentionally different or not applicable on Apple platforms.
+SwiftFlow adapts familiar ReactFlow concepts to SwiftUI-native APIs. Release 0.2.0 focuses on the core canvas, nodes, edges, handles, overlays, callbacks, graph utilities, serialization, theming, and auto layout; some ReactFlow-specific browser APIs are intentionally different or not applicable on Apple platforms.
 
 ### Key Differences
 
@@ -1015,7 +1015,7 @@ SwiftFlow adapts familiar ReactFlow concepts to SwiftUI-native APIs. Release 0.1
 
 ### Feature Parity
 
-| Category               | SwiftFlow 0.1.1 Status |
+| Category               | SwiftFlow 0.2.0 Status |
 | ---------------------- | ---------------------- |
 | Components             | Core canvas, handles, controls, minimap, backgrounds, panels, toolbars, resize controls, and edge label helpers |
 | State Patterns         | Change callbacks, `SwiftFlowStore`, `SwiftFlowProvider`, and `SwiftFlowInstance` |

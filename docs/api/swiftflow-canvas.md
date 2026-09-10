@@ -77,7 +77,7 @@ SwiftFlow(
 | -------------------- | -------------------- | ------------- | --------------------------------------------------- |
 | `coordinateExtent`   | `CoordinateExtent`   | `.infinite`   | Boundary constraints for node dragging              |
 | `fitView`            | `Bool`               | `false`       | Auto-fit all nodes into viewport on load            |
-| `fitViewOptions`     | `FitViewOptions?`    | `nil`         | Configuration for fit-view behavior                 |
+| `fitViewOptions`     | `FitViewOptions?`    | `nil`         | Configuration for fit-view behavior; `padding`, `nodeIds`, and `includeHiddenNodes` are honored when auto-fitting on load |
 | `defaultEdgeOptions` | `DefaultEdgeOptions?`| `nil`         | Default properties applied to newly created edges   |
 | `keyboardShortcuts`  | `KeyboardShortcuts`  | `.default`    | Keyboard shortcut key codes and nudge distances     |
 | `accessibilityConfig`| `AccessibilityConfig`| `.default`    | VoiceOver and accessibility configuration           |

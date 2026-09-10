@@ -434,7 +434,6 @@ public struct SwiftFlow<
     )
     .onAppear {
       syncFlowState()
-      bindSwiftFlowInstance()
       onInit?()
       startEdgeAnimationIfNeeded()
       if fitView {
@@ -450,18 +449,24 @@ public struct SwiftFlow<
       flowState.viewport = newViewport
       swiftFlowInstance?.viewport = newViewport
     }
-    .onChange(of: nodes.map(\.selected)) { _ in checkSelectionChange() }
-    .onChange(of: edges.map(\.selected)) { _ in checkSelectionChange() }
+    .onChange(of: nodes.filter(\.selected).map(\.id)) { _ in checkSelectionChange() }
+    .onChange(of: edges.filter(\.selected).map(\.id)) { _ in checkSelectionChange() }
     .onChange(of: hasAnimatedEdges) { _ in startEdgeAnimationIfNeeded() }
     .onChange(of: nodes) { _ in syncFlowState() }
     .onChange(of: edges) { _ in syncFlowState() }
     .onChange(of: nodeSizes) { _ in syncFlowState() }
+    .onDisappear {
+      swiftFlowInstance?._applyViewport = nil
+      swiftFlowInstance?._deleteElements = nil
+      flowState.applyViewport = nil
+    }
   }
 
   // MARK: - State Synchronization
 
   /// Syncs internal state to the shared SwiftFlowState for overlay components.
   private func syncFlowState() {
+    bindSwiftFlowInstance()
     flowState.viewport = viewport
     flowState.viewSize = viewSize
     flowState.nodeSizes = nodeSizes
@@ -476,7 +481,9 @@ public struct SwiftFlow<
         source: edge.source, target: edge.target,
         sourceHandle: edge.sourceHandle, targetHandle: edge.targetHandle)
       connMap[edge.source, default: []].append(conn)
-      connMap[edge.target, default: []].append(conn)
+      if edge.target != edge.source {
+        connMap[edge.target, default: []].append(conn)
+      }
     }
     flowState.connectionsMap = connMap
     flowState.applyViewport = { vp, animated in
@@ -1418,8 +1425,14 @@ public struct SwiftFlow<
   }
 
   private func deleteSelected() {
-    let nodesToDelete = nodes.filter { $0.selected && $0.deletable }
-    let edgesToDelete = edges.filter { $0.selected && $0.deletable }
+    requestDeletion(
+      nodeIds: nodes.filter(\.selected).map(\.id),
+      edgeIds: edges.filter(\.selected).map(\.id))
+  }
+
+  private func requestDeletion(nodeIds: [String], edgeIds: [String]) {
+    let (nodesToDelete, edgesToDelete) = elementsToDelete(
+      nodes: nodes, edges: edges, nodeIds: nodeIds, edgeIds: edgeIds)
     guard !nodesToDelete.isEmpty || !edgesToDelete.isEmpty else { return }
 
     if let beforeDelete = onBeforeDelete {
@@ -1738,13 +1751,15 @@ public struct SwiftFlow<
   }
 
   private func bindSwiftFlowInstance() {
-    swiftFlowInstance?.onViewportChange = { [onViewportChange] vp in onViewportChange?(vp) }
-    swiftFlowInstance?._getEdges = { [edges] in edges as [Any] }
-    swiftFlowInstance?._applyEdgeChanges = { [onEdgesChange] edgeIds in
-      if let ids = edgeIds as? [String] {
-        let changes: [EdgeChange<EdgeData>] = ids.map { .remove(id: $0) }
-        onEdgesChange?(changes)
-      }
+    guard let instance = swiftFlowInstance else { return }
+    instance.viewport = viewport
+    instance.viewSize = viewSize
+    instance.nodeSizes = nodeSizes
+    instance._applyViewport = { [binding = $viewport] vp in
+      binding.wrappedValue = vp
+    }
+    instance._deleteElements = { nodeIds, edgeIds in
+      requestDeletion(nodeIds: nodeIds, edgeIds: edgeIds)
     }
   }
 
@@ -1789,8 +1804,12 @@ public struct SwiftFlow<
 
   // MARK: - Geometry Helpers
 
-  private var nodesBoundingBox: (minX: CGFloat, minY: CGFloat, maxX: CGFloat, maxY: CGFloat) {
-    let visibleNodes = nodes.filter { !$0.hidden }
+  private func nodesBoundingBox(options: FitViewOptions?)
+    -> (minX: CGFloat, minY: CGFloat, maxX: CGFloat, maxY: CGFloat) {
+    let ids = options?.nodeIds.map { Set($0) }
+    let visibleNodes = nodes.filter {
+      (!$0.hidden || options?.includeHiddenNodes == true) && (ids?.contains($0.id) ?? true)
+    }
     guard !visibleNodes.isEmpty else { return (0, 0, 0, 0) }
     let absPositions = absolutePositionCache
     var minX: CGFloat = .infinity
@@ -1810,7 +1829,7 @@ public struct SwiftFlow<
   }
 
   private func fitToContent(options: FitViewOptions? = nil) {
-    let b = nodesBoundingBox
+    let b = nodesBoundingBox(options: options)
     let cw = b.maxX - b.minX
     let ch = b.maxY - b.minY
     guard cw > 0, ch > 0 else { return }
@@ -1820,7 +1839,9 @@ public struct SwiftFlow<
     let effectiveWidth = max(1, viewSize.width - pad * 2)
     let effectiveHeight = max(1, viewSize.height - pad * 2)
     let z = max(min(min(effectiveWidth / cw, effectiveHeight / ch), maxZoom), minZoom)
-    viewport = Viewport(x: -(b.minX * z) + pad, y: -(b.minY * z) + pad, zoom: z)
+    viewport = Viewport(
+      x: viewSize.width / 2 - (b.minX + b.maxX) / 2 * z,
+      y: viewSize.height / 2 - (b.minY + b.maxY) / 2 * z, zoom: z)
   }
 
   private func getHandlePos(

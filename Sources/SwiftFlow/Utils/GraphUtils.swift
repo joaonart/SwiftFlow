@@ -40,3 +40,19 @@ public func getConnectedEdges<
   let nodeIds = Set(nodes.map(\.id))
   return edges.filter { nodeIds.contains($0.source) || nodeIds.contains($0.target) }
 }
+
+/// Resolves deletable nodes and explicitly requested edges, including every
+/// incident edge so deleting a node cannot leave dangling connections.
+internal func elementsToDelete<N: Equatable & Sendable, E: Equatable & Sendable & Hashable>(
+  nodes: [Node<N>], edges: [Edge<E>], nodeIds: [String], edgeIds: [String]
+) -> (nodes: [Node<N>], edges: [Edge<E>]) {
+  let requestedNodes = Set(nodeIds)
+  let requestedEdges = Set(edgeIds)
+  let deletedNodes = nodes.filter { requestedNodes.contains($0.id) && $0.deletable }
+  let deletedIds = Set(deletedNodes.map(\.id))
+  let deletedEdges = edges.filter {
+    (requestedEdges.contains($0.id) && $0.deletable)
+      || deletedIds.contains($0.source) || deletedIds.contains($0.target)
+  }
+  return (deletedNodes, deletedEdges)
+}

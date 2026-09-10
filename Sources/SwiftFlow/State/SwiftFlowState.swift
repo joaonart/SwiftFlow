@@ -106,7 +106,9 @@ public class SwiftFlowState: ObservableObject {
     let effectiveWidth = max(1, viewSize.width - padding * 2)
     let effectiveHeight = max(1, viewSize.height - padding * 2)
     let z = max(Viewport.minZoom, min(min(effectiveWidth / cw, effectiveHeight / ch), maxZoom))
-    let vp = Viewport(x: -(minX * z) + padding, y: -(minY * z) + padding, zoom: z)
+    let vp = Viewport(
+      x: viewSize.width / 2 - (minX + maxX) / 2 * z,
+      y: viewSize.height / 2 - (minY + maxY) / 2 * z, zoom: z)
     setViewport(vp, animated: animated)
   }
 

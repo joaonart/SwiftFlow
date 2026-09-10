@@ -27,10 +27,8 @@ public class SwiftFlowInstance: ObservableObject {
 
   // MARK: - Internal Closures (set by SwiftFlow)
 
-  internal var _getNodes: (() -> [Any])?
-  internal var _getEdges: (() -> [Any])?
-  internal var _applyNodeChanges: (([Any]) -> Void)?
-  internal var _applyEdgeChanges: (([Any]) -> Void)?
+  internal var _applyViewport: ((Viewport) -> Void)?
+  internal var _deleteElements: (([String], [String]) -> Void)?
 
   public init() {}
 
@@ -71,7 +69,8 @@ public class SwiftFlowInstance: ObservableObject {
       min(min(effectiveWidth / cw, effectiveHeight / ch), options.maxZoom), options.minZoom)
 
     let vp = Viewport(
-      x: -(bounds.minX * zoom) + padding, y: -(bounds.minY * zoom) + padding, zoom: zoom)
+      x: viewSize.width / 2 - (bounds.minX + bounds.maxX) / 2 * zoom,
+      y: viewSize.height / 2 - (bounds.minY + bounds.maxY) / 2 * zoom, zoom: zoom)
     apply(vp, duration: options.duration)
   }
 
@@ -132,9 +131,7 @@ public class SwiftFlowInstance: ObservableObject {
 
   /// Deletes the specified nodes and edges by ID.
   public func deleteElements(nodeIds: [String] = [], edgeIds: [String] = []) {
-    if !edgeIds.isEmpty {
-      _applyEdgeChanges?(edgeIds)
-    }
+    _deleteElements?(nodeIds, edgeIds)
   }
 
   // MARK: - Bounds
@@ -161,8 +158,8 @@ public class SwiftFlowInstance: ObservableObject {
     let effectiveHeight = max(1, viewSize.height - padding * 2)
     let zoom = max(min(min(effectiveWidth / cw, effectiveHeight / ch), maxZoom), minZoom)
     return Viewport(
-      x: -(bounds.minX * zoom) + padding,
-      y: -(bounds.minY * zoom) + padding,
+      x: viewSize.width / 2 - bounds.midX * zoom,
+      y: viewSize.height / 2 - bounds.midY * zoom,
       zoom: zoom
     )
   }
@@ -171,9 +168,13 @@ public class SwiftFlowInstance: ObservableObject {
 
   private func apply(_ vp: Viewport, duration: TimeInterval?) {
     if let duration, duration > 0 {
-      withAnimation(.easeInOut(duration: duration)) { viewport = vp }
+      withAnimation(.easeInOut(duration: duration)) {
+        viewport = vp
+        _applyViewport?(vp)
+      }
     } else {
       viewport = vp
+      _applyViewport?(vp)
     }
     onViewportChange?(viewport)
   }

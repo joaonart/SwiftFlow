@@ -1,6 +1,6 @@
 # MiniMap
 
-An interactive overview of the graph showing all nodes, edges, and the current viewport position. Click and drag to pan the main viewport.
+An interactive overview of the graph showing all nodes, edges, and the current viewport position. Click and drag to pan the main viewport; pinch or magnify to zoom it when `zoomable` is enabled. Pan and zoom gestures are active only while the canvas is interactive (`SwiftFlowState.isInteractive`).
 
 ## Basic Usage
 
@@ -74,7 +74,7 @@ MiniMap(
 | `width`            | `CGFloat`                         | `150`                | MiniMap width                    |
 | `height`           | `CGFloat`                         | `100`                | MiniMap height                   |
 | `pannable`         | `Bool`                            | `true`               | Click-drag to pan main viewport  |
-| `zoomable`         | `Bool`                            | `false`              | Scroll to zoom (future)          |
+| `zoomable`         | `Bool`                            | `false`              | Pinch/magnify to zoom main viewport |
 | `position`         | `PanelPosition`                   | `.bottomRight`       | Panel position on canvas         |
 | `nodeContent`      | `((MiniMapNodeProps) -> NodeContent)?`| `nil`             | Custom node view                 |
 
@@ -82,18 +82,18 @@ MiniMap(
 
 ```swift
 public struct MiniMapNodeProps: Sendable {
-    let id: String
-    let x: CGFloat
-    let y: CGFloat
-    let width: CGFloat
-    let height: CGFloat
-    let selected: Bool
-    let type: String
+    public let id: String
+    public let x: CGFloat
+    public let y: CGFloat
+    public let width: CGFloat
+    public let height: CGFloat
+    public let selected: Bool
+    public let type: String
 }
 ```
 
 ## How It Works
 
-The MiniMap reads all visible nodes from `SwiftFlowState`, computes a bounding box, and scales the entire graph to fit within its frame. A blue rectangle indicates the current viewport position. Edges are rendered as simple straight lines at reduced opacity.
+The MiniMap reads all visible nodes and the current viewport from `SwiftFlowState`, then computes a bounding box covering both the visible canvas area and every node, so the viewport indicator stays accurate even when the graph is small or far away. It scales the whole box to fit within its frame; a blue rectangle indicates the current viewport position. Edges are rendered as simple straight lines below the nodes at reduced opacity.
 
-Dragging within the MiniMap pans the main canvas viewport proportionally. When `pannable` is `false`, the MiniMap acts as a read-only overview.
+Dragging within the MiniMap pans the main canvas viewport proportionally; when `zoomable` is `true`, a magnification gesture zooms the main viewport around its current center. Both gestures respect the canvas `isInteractive` state and are ignored while it is disabled. When `pannable` is `false`, the MiniMap acts as a read-only overview.

@@ -110,4 +110,50 @@ struct AutoLayoutTests {
     )
     #expect(!changes.isEmpty)
   }
+  @Test func invalidLayoutCountsAreSafe() {
+    for columns in [0, -2] {
+      let result = applyNodeChanges(
+        computeAutoLayout(nodes: nodes, edges: edges, algorithm: .grid(columns: columns)),
+        nodes: nodes)
+      #expect(result.allSatisfy { $0.position.x == 0 })
+      #expect(result[1].position.y > result[0].position.y)
+    }
+    for iterations in [0, -1] {
+      #expect(computeAutoLayout(
+        nodes: nodes, edges: edges, algorithm: .forceDirected(iterations: iterations)).isEmpty)
+    }
+  }
+
+  @Test func gridUsesLargestSizeInEachRowAndColumn() {
+    let sizes: [String: CGSize] = [
+      "1": CGSize(width: 400, height: 200),
+      "2": CGSize(width: 50, height: 30),
+      "3": CGSize(width: 80, height: 40),
+    ]
+    let result = applyNodeChanges(
+      computeAutoLayout(nodes: nodes, edges: edges, algorithm: .grid(columns: 2), nodeSizes: sizes),
+      nodes: nodes)
+    #expect(result[1].position.x == 450)
+    #expect(result[2].position.y == 250)
+  }
+
+  @Test func treePreservesInputOrderAndSpacesVariableSizes() {
+    let sizes: [String: CGSize] = [
+      "2": CGSize(width: 400, height: 200),
+      "3": CGSize(width: 50, height: 30),
+    ]
+    for direction in [LayoutDirection.topToBottom, .leftToRight] {
+      let result = applyNodeChanges(
+        computeAutoLayout(nodes: nodes, edges: edges,
+          algorithm: .tree(direction: direction), nodeSizes: sizes), nodes: nodes)
+      if direction == .topToBottom {
+        #expect(result[2].position.x - result[1].position.x == 450)
+        #expect(result[1].position.x == -250)
+      } else {
+        #expect(result[2].position.y - result[1].position.y == 250)
+        #expect(result[1].position.y == -140)
+      }
+    }
+  }
+
 }

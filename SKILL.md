@@ -5,7 +5,7 @@ license: MIT
 compatibility: iOS 16.0+, macOS 13.0+, Swift 6.1+
 metadata:
   author: A.Aurelions
-  version: "0.1.1"
+  version: "0.2.0"
 ---
 
 # SwiftFlow Documentation
@@ -172,7 +172,7 @@ MiniMap(nodeColor: = .gray.opacity(0.5), nodeColorMapper: ((MiniMapNodeProps) ->
         selectedNodeColor: = .blue, width: CGFloat = 150, height: CGFloat = 100,
         pannable: Bool = true, zoomable: Bool = false, position: PanelPosition = .bottomRight)
 ```
-Supports `nodeColorMapper` for dynamic coloring, or a custom `nodeContent` ViewBuilder for per-node rendering.
+Supports `nodeColorMapper` for dynamic coloring, or a custom `nodeContent` ViewBuilder for per-node rendering. Drag to pan the main viewport (`pannable`, default `true`); pinch/magnify to zoom it (`zoomable`, default `false`). Both gestures are active only while the canvas is interactive.
 
 ### Panel
 ```swift

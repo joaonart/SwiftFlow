@@ -34,6 +34,9 @@ public struct MiniMapNodeProps: Sendable {
 public struct MiniMap<NodeContent: View>: View {
   @EnvironmentObject private var flowState: SwiftFlowState
 
+  @State private var dragLayout: MiniMapLayout?
+  @State private var zoomStart: CGFloat?
+
   public var nodeColor: Color
   public var nodeColorMapper: ((MiniMapNodeProps) -> Color)?
   public var selectedNodeColor: Color
@@ -97,42 +100,24 @@ public struct MiniMap<NodeContent: View>: View {
     flowState.nodes.filter { !$0.hidden }
   }
 
-  private var bounds: (minX: CGFloat, minY: CGFloat, maxX: CGFloat, maxY: CGFloat) {
-    guard !visibleNodes.isEmpty else {
-      return (0, 0, max(flowState.viewSize.width, 1), max(flowState.viewSize.height, 1))
-    }
-    var minX: CGFloat = .infinity
-    var minY: CGFloat = .infinity
-    var maxX: CGFloat = -.infinity
-    var maxY: CGFloat = -.infinity
-    for node in visibleNodes {
-      let pos = flowState.absolutePositions[node.id] ?? XYPosition(x: node.x, y: node.y)
-      let size = flowState.nodeSizes[node.id] ?? CGSize(width: 100, height: 50)
-      minX = min(minX, pos.x)
-      minY = min(minY, pos.y)
-      maxX = max(maxX, pos.x + size.width)
-      maxY = max(maxY, pos.y + size.height)
-    }
-    if minX == .infinity {
-      return (0, 0, max(flowState.viewSize.width, 1), max(flowState.viewSize.height, 1))
-    }
-    return (minX, minY, maxX, maxY)
-  }
+  private var pad: CGFloat { min(20, max(0, (min(width, height) - 1) / 2)) }
 
-  private var pad: CGFloat { 20 }
-
-  private var scale: CGFloat {
-    let b = bounds
-    let cw = max(b.maxX - b.minX, 1)
-    let ch = max(b.maxY - b.minY, 1)
-    return min((width - pad * 2) / cw, (height - pad * 2) / ch, 1.0)
+  private var layout: MiniMapLayout {
+    let rects = visibleNodes.map { node in
+      let props = nodeProps(for: node)
+      return CGRect(x: props.x, y: props.y, width: props.width, height: props.height)
+    }
+    return MiniMapLayout(nodeRects: rects, viewport: flowState.viewport,
+      viewSize: flowState.viewSize, mapSize: CGSize(width: width, height: height), padding: pad)
   }
 
   // MARK: - Body
 
   public var body: some View {
-    let s = scale
-    let b = bounds
+    let currentLayout = dragLayout ?? layout
+    let s = currentLayout.scale
+    let rect = currentLayout.bounds
+    let b = (minX: rect.minX, minY: rect.minY, maxX: rect.maxX, maxY: rect.maxY)
 
     ZStack(alignment: .topLeading) {
       RoundedRectangle(cornerRadius: 6)
@@ -140,13 +125,16 @@ public struct MiniMap<NodeContent: View>: View {
         .overlay(
           RoundedRectangle(cornerRadius: 6).stroke(Color.gray.opacity(0.2), lineWidth: 1))
 
-      nodesLayer(scale: s, bounds: b)
       edgesLayer(scale: s, bounds: b)
+      nodesLayer(scale: s, bounds: b)
       viewportIndicator(scale: s, bounds: b)
     }
-    .frame(width: width, height: height)
+    .frame(width: max(width, 1), height: max(height, 1))
+    .clipShape(RoundedRectangle(cornerRadius: 6))
     .contentShape(Rectangle())
-    .gesture(pannable ? minimapDragGesture(scale: s, bounds: b) : nil)
+    .gesture(pannable && flowState.isInteractive ? minimapDragGesture(layout: currentLayout) : nil)
+    .simultaneousGesture(zoomable && flowState.isInteractive ? minimapZoomGesture : nil)
+    .accessibilityLabel("Flow overview")
     .padding(12)
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: panelAlignment)
   }
@@ -245,21 +233,27 @@ public struct MiniMap<NodeContent: View>: View {
   }
 
   /// Continuous drag gesture for panning the viewport via the minimap.
-  private func minimapDragGesture(
-    scale: CGFloat, bounds: (minX: CGFloat, minY: CGFloat, maxX: CGFloat, maxY: CGFloat)
-  ) -> some Gesture {
+  private func minimapDragGesture(layout: MiniMapLayout) -> some Gesture {
     DragGesture(minimumDistance: 0)
       .onChanged { value in
-        let canvasX = (value.location.x - pad) / scale + bounds.minX
-        let canvasY = (value.location.y - pad) / scale + bounds.minY
+        if dragLayout == nil { dragLayout = layout }
+        let point = (dragLayout ?? layout).flowPosition(at: value.location)
         let zoom = flowState.viewport.zoom
-        let newViewport = Viewport(
-          x: -canvasX * zoom + flowState.viewSize.width / 2,
-          y: -canvasY * zoom + flowState.viewSize.height / 2,
-          zoom: zoom
-        )
-        flowState.setViewport(newViewport, animated: false)
+        flowState.setViewport(Viewport(
+          x: -point.x * zoom + flowState.viewSize.width / 2,
+          y: -point.y * zoom + flowState.viewSize.height / 2,
+          zoom: zoom), animated: false)
       }
+      .onEnded { _ in dragLayout = nil }
+  }
+
+  private var minimapZoomGesture: some Gesture {
+    MagnificationGesture()
+      .onChanged { value in
+        if zoomStart == nil { zoomStart = flowState.viewport.zoom }
+        flowState.zoomTo((zoomStart ?? flowState.viewport.zoom) * value, animated: false)
+      }
+      .onEnded { _ in zoomStart = nil }
   }
 
   private var panelAlignment: Alignment {
@@ -308,5 +302,29 @@ extension MiniMap where NodeContent == EmptyView {
     self.zoomable = zoomable
     self.position = position
     self.nodeContent = nil
+  }
+}
+
+/// Shared geometry for rendering and hit testing. The visible canvas must fit
+/// alongside the nodes, especially at low zoom or far away from the graph.
+internal struct MiniMapLayout {
+  let bounds: CGRect
+  let scale: CGFloat
+  let padding: CGFloat
+
+  init(nodeRects: [CGRect], viewport: Viewport, viewSize: CGSize, mapSize: CGSize, padding: CGFloat) {
+    let zoom = max(viewport.zoom, Viewport.minZoom)
+    var bounds = CGRect(x: -viewport.x / zoom, y: -viewport.y / zoom,
+      width: max(viewSize.width / zoom, 1), height: max(viewSize.height / zoom, 1))
+    for rect in nodeRects { bounds = bounds.union(rect) }
+    self.bounds = bounds
+    self.padding = min(max(padding, 0), max(0, (min(mapSize.width, mapSize.height) - 1) / 2))
+    self.scale = min(max(1, mapSize.width - self.padding * 2) / max(bounds.width, 1),
+      max(1, mapSize.height - self.padding * 2) / max(bounds.height, 1), 1)
+  }
+
+  func flowPosition(at point: CGPoint) -> CGPoint {
+    CGPoint(x: (point.x - padding) / scale + bounds.minX,
+      y: (point.y - padding) / scale + bounds.minY)
   }
 }

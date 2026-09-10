@@ -24,7 +24,7 @@ public struct Node<NodeData: Equatable & Sendable>: Identifiable, Equatable, Sen
 | `draggable`      | `Bool`        | `true`      | Whether the node can be dragged                   |
 | `selectable`     | `Bool`        | `true`      | Whether the node can be selected                  |
 | `connectable`    | `Bool`        | `true`      | Whether handles on this node accept connections   |
-| `deletable`      | `Bool`        | `true`      | Whether the node can be deleted via keyboard      |
+| `deletable`      | `Bool`        | `true`      | Whether the node can be deleted (keyboard or `deleteElements`)      |
 | `expandable`     | `Bool`        | `false`     | Whether the node can expand/collapse sub-nodes    |
 | `expanded`       | `Bool`        | `true`      | Current expanded state (if expandable)            |
 | `expandParent`   | `Bool`        | `false`     | Expand to fill parent bounds                      |
@@ -83,7 +83,7 @@ public struct Edge<EdgeData: Equatable & Sendable & Hashable>: Identifiable, Equ
 | `markerEnd`       | `EdgeMarker?` | `nil`       | End endpoint marker                                |
 | `zIndex`          | `Int`         | `0`         | Render order                                       |
 | `reconnectable`   | `Bool`        | `false`     | Whether endpoints can be dragged to reconnect      |
-| `deletable`       | `Bool`        | `true`      | Deletable via keyboard                             |
+| `deletable`       | `Bool`        | `true`      | Deletable via keyboard or `deleteElements`                             |
 | `focusable`       | `Bool`        | `true`      | Whether the edge can receive focus                 |
 | `interactionWidth`| `CGFloat`     | `20`        | Width of invisible hit-test area                   |
 | `data`            | `EdgeData?`   | `nil`       | User-defined data                                  |

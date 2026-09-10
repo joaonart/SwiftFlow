@@ -210,6 +210,7 @@ extension View {
     }
 
     final class ScrollWheelNSView: NSView {
+      override var isFlipped: Bool { true }
       var onScroll: ((CGSize, CGPoint) -> Void)?
       private var eventMonitor: Any?
 

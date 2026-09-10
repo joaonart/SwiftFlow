@@ -15,6 +15,14 @@ SwiftFlow(
 ) { node in ... }
 ```
 
+While attached, the canvas mirrors its state into the instance (`viewport`, `viewSize`, `nodeSizes`), and every viewport command issued through the instance — `setViewport`, `fitView`, `setCenter`, `zoomTo`, `reset` — is applied to the canvas view immediately. This makes the instance a reliable single source of truth for imperative viewport control, including restore-on-load flows:
+
+```swift
+.onInit {
+    instance.setViewport(savedViewport ?? .identity, animated: false)
+}
+```
+
 ## Fit View
 
 Adjust the viewport to show all (or specific) nodes:

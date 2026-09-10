@@ -40,8 +40,8 @@ public func getViewportForBounds(
   let effectiveHeight = max(1, viewportSize.height - padding * 2)
   let zoom = max(min(min(effectiveWidth / cw, effectiveHeight / ch), maxZoom), minZoom)
   return Viewport(
-    x: -(bounds.minX * zoom) + padding,
-    y: -(bounds.minY * zoom) + padding,
+    x: viewportSize.width / 2 - bounds.midX * zoom,
+    y: viewportSize.height / 2 - bounds.midY * zoom,
     zoom: zoom
   )
 }

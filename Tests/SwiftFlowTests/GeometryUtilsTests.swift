@@ -75,4 +75,13 @@ struct GeometryUtilsTests {
     #expect(isEdge(edge, ofType: EmptyEdgeData.self))
     #expect(!isEdge("not an edge", ofType: EmptyEdgeData.self))
   }
+  @Test func fittedBoundsAreCenteredWhenZoomIsCapped() {
+    let bounds = CGRect(x: -100, y: 70, width: 100, height: 50)
+    let vp = getViewportForBounds(bounds: bounds,
+      viewportSize: CGSize(width: 800, height: 600), maxZoom: 1.5)
+    #expect(vp.zoom == 1.5)
+    #expect(bounds.midX * vp.zoom + vp.x == 400)
+    #expect(bounds.midY * vp.zoom + vp.y == 300)
+  }
+
 }

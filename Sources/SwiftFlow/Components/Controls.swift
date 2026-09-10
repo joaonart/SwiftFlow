@@ -40,6 +40,7 @@ public struct Controls<Children: View>: View {
       if showZoom {
         ControlButton(action: { flowState.zoomIn() }) {
           Image(systemName: "plus")
+            .accessibilityLabel("Zoom in")
             .font(.system(size: 14, weight: .medium))
         }
         Divider()
@@ -51,9 +52,11 @@ public struct Controls<Children: View>: View {
             .frame(width: 32, height: 24)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Reset zoom to 100 percent")
         Divider()
         ControlButton(action: { flowState.zoomOut() }) {
           Image(systemName: "minus")
+            .accessibilityLabel("Zoom out")
             .font(.system(size: 14, weight: .medium))
         }
       }
@@ -61,6 +64,7 @@ public struct Controls<Children: View>: View {
         if showZoom { Divider() }
         ControlButton(action: { flowState.fitView() }) {
           Image(systemName: "arrow.up.left.and.arrow.down.right")
+            .accessibilityLabel("Fit all nodes")
             .font(.system(size: 12, weight: .medium))
         }
       }

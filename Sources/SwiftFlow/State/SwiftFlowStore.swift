@@ -24,8 +24,12 @@ import SwiftUI
 public class SwiftFlowStore<
   NodeData: Equatable & Sendable, EdgeData: Equatable & Sendable & Hashable
 >: ObservableObject {
-  @Published public var nodes: [Node<NodeData>]
-  @Published public var edges: [Edge<EdgeData>]
+  @Published public var nodes: [Node<NodeData>] {
+    didSet { selectedNodeIds = Set(nodes.filter(\.selected).map(\.id)) }
+  }
+  @Published public var edges: [Edge<EdgeData>] {
+    didSet { selectedEdgeIds = Set(edges.filter(\.selected).map(\.id)) }
+  }
   @Published public var viewport: Viewport = .identity
   @Published public var selectedNodeIds: Set<String> = []
   @Published public var selectedEdgeIds: Set<String> = []
@@ -33,18 +37,18 @@ public class SwiftFlowStore<
   public init(nodes: [Node<NodeData>] = [], edges: [Edge<EdgeData>] = []) {
     self.nodes = nodes
     self.edges = edges
+    selectedNodeIds = Set(nodes.filter(\.selected).map(\.id))
+    selectedEdgeIds = Set(edges.filter(\.selected).map(\.id))
   }
 
   /// Applies an array of node changes to the current nodes.
   public func onNodesChange(_ changes: [NodeChange<NodeData>]) {
     nodes = applyNodeChanges(changes, nodes: nodes)
-    selectedNodeIds = Set(nodes.filter(\.selected).map(\.id))
   }
 
   /// Applies an array of edge changes to the current edges.
   public func onEdgesChange(_ changes: [EdgeChange<EdgeData>]) {
     edges = applyEdgeChanges(changes, edges: edges)
-    selectedEdgeIds = Set(edges.filter(\.selected).map(\.id))
   }
 
   /// Creates a new edge from a connection.
@@ -128,22 +132,17 @@ public class SwiftFlowStore<
       .eraseToAnyPublisher()
   }
 
-  /// Deletes nodes and edges by ID, returning the deleted elements.
+  /// Deletes deletable nodes and edges by ID, returning the deleted elements.
+  /// Incident edges are also removed when their endpoint node is deleted.
   @discardableResult
   public func deleteElements(
     nodeIds: [String] = [],
     edgeIds: [String] = []
   ) -> (nodes: [Node<NodeData>], edges: [Edge<EdgeData>]) {
-    let deletedNodes = nodes.filter { nodeIds.contains($0.id) }
-    let deletedEdges = edges.filter { edgeIds.contains($0.id) }
-    if !nodeIds.isEmpty {
-      let changes = nodeIds.map { NodeChange<NodeData>.remove(id: $0) }
-      onNodesChange(changes)
-    }
-    if !edgeIds.isEmpty {
-      let changes = edgeIds.map { EdgeChange<EdgeData>.remove(id: $0) }
-      onEdgesChange(changes)
-    }
+    let (deletedNodes, deletedEdges) = elementsToDelete(
+      nodes: nodes, edges: edges, nodeIds: nodeIds, edgeIds: edgeIds)
+    onNodesChange(deletedNodes.map { .remove(id: $0.id) })
+    onEdgesChange(deletedEdges.map { .remove(id: $0.id) })
     return (nodes: deletedNodes, edges: deletedEdges)
   }
 }
