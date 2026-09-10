@@ -1,6 +1,6 @@
 # AI Flow — Project Setup & ContentView Demo
 
-Build an interactive AI workflow editor with SwiftFlow. This example walks through creating a new SwiftUI project that depends on SwiftFlow and writing a complete `ContentView.swift` with nodes, edges, handles, and overlay components.
+Build an interactive AI workflow editor with SwiftFlow. This example mirrors the `SwiftFlowDemo` project from the repository: a macOS/iOS SwiftUI app that renders an AI request flow with macro sub-graphs, a JavaScript-based runtime, streaming HTTP, and the full SwiftFlow overlay stack.
 
 ![AI Flow Demo Screenshot](/screenshot.png)
 
@@ -40,15 +40,27 @@ let package = Package(
 )
 ```
 
-## ContentView.swift
+## Project Files
 
-Create `ContentView.swift` with the following code. This builds an AI request flow editor with classified outputs:
+The demo project keeps the editor code in four Swift files:
+
+| File                        | Role                                                                 |
+| --------------------------- | -------------------------------------------------------------------- |
+| `ContentView.swift`         | Canvas setup, node views, overlay components, and the flow runtime   |
+| `DemoGraphEditor.swift`     | Applies node changes; cascades deletions/restores of macro descendants |
+| `ContextMenuLocationReader.swift` | Records the right-click position on macOS so nodes spawn under the cursor |
+| `SwiftFlowDemoApp.swift`    | App entry point with a borderless window on macOS                    |
+
+### ContentView.swift
 
 ```swift
 import SwiftUI
 import SwiftFlow
 import UniformTypeIdentifiers
 import JavaScriptCore
+#if canImport(UIKit)
+import UIKit
+#endif
 
 // MARK: - Color Constants
 
@@ -702,6 +714,8 @@ struct FlowNodeContent: View {
 
     var isFrozen: Bool { runtime.frozenNodes.contains(node.id) }
     var isError: Bool { runtime.nodeErrors[node.id] != nil }
+    @State private var isImageImporterPresented = false
+    @State private var imageImportError: String?
     @State private var isHovered = false
     @State private var pulseOpacity: CGFloat = 1.0
     private var showTools: Bool { isHovered }
@@ -1092,8 +1106,8 @@ struct FlowNodeContent: View {
                 .buttonStyle(.plain)
             } else {
                 ZStack(alignment: .topTrailing) {
-                    if let nsImage = base64ToNSImage(node.data.value) {
-                        Image(nsImage: nsImage)
+                    if let image = decodedImage(node.data.value) {
+                        image
                             .resizable()
                             .aspectRatio(contentMode: .fit)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1134,31 +1148,29 @@ struct FlowNodeContent: View {
                 .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.borderMid))
             }
         }
+        .fileImporter(isPresented: $isImageImporterPresented, allowedContentTypes: [.image]) { result in
+            do {
+                let url = try result.get()
+                let scoped = url.startAccessingSecurityScopedResource()
+                defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+                let data = try Data(contentsOf: url)
+                let mimeType = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
+                onUpdateValue(node.id, "data:\(mimeType);base64," + data.base64EncodedString())
+            } catch {
+                imageImportError = error.localizedDescription
+            }
+        }
+        .alert("Unable to open image", isPresented: Binding(
+            get: { imageImportError != nil }, set: { if !$0 { imageImportError = nil } }
+        )) {
+            Button("OK") { imageImportError = nil }
+        } message: {
+            Text(imageImportError ?? "")
+        }
     }
 
     private func pickImage() {
-        #if canImport(AppKit)
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.image]
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-        if panel.runModal() == .OK, let url = panel.url,
-           let data = try? Data(contentsOf: url) {
-            let base64 = "data:image/png;base64," + data.base64EncodedString()
-            onUpdateValue(node.id, base64)
-        }
-        #endif
-    }
-
-    private func base64ToNSImage(_ str: String) -> NSImage? {
-        #if canImport(AppKit)
-        guard let commaIndex = str.firstIndex(of: ",") else { return nil }
-        let base64Part = String(str[str.index(after: commaIndex)...])
-        guard let data = Data(base64Encoded: base64Part) else { return nil }
-        return NSImage(data: data)
-        #else
-        return nil
-        #endif
+        isImageImporterPresented = true
     }
 
     private var customScriptBody: some View {
@@ -1305,7 +1317,9 @@ struct ContentView: View {
     @State private var editNodeLabel: String = ""
     @State private var previewImageURL: String? = nil
     @State private var previewBase64Image: String? = nil
-    @State private var contextMenuPosition: CGPoint = .zero
+    @State private var contextMenuPosition: XYPosition?
+    @State private var savedViewports: [String: Viewport] = [:]
+    @State private var graphEditor = DemoGraphEditor<FlowNodeData, EmptyEdgeData>()
     @State private var windowDragStart: CGPoint? = nil
     private var nodeCounter: Int { nodes.count }
 
@@ -1362,7 +1376,7 @@ struct ContentView: View {
                     .tracking(1)
 
                 HStack(spacing: 8) {
-                    Button("ROOT") { currentView = nil }
+                    Button("ROOT") { navigate(to: nil) }
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundColor(currentView == nil ? .cyanAccent : .textMuted)
                         .buttonStyle(.plain)
@@ -1462,39 +1476,19 @@ struct ContentView: View {
             nodes: visibleNodes,
             edges: visibleEdges,
             onNodesChange: { changes in
-                var all = nodes
-                for change in changes {
-                    switch change {
-                    case .position(let id, let pos):
-                        if let i = all.firstIndex(where: { $0.id == id }) { all[i].position = pos }
-                    case .selection(let id, let sel):
-                        if let i = all.firstIndex(where: { $0.id == id }) { all[i].selected = sel }
-                    case .remove(let id):
-                        let children = all.filter { $0.parentId == id }.map(\.id)
-                        all.removeAll { $0.id == id || children.contains($0.id) }
-                        edges.removeAll { $0.source == id || $0.target == id || children.contains($0.source) || children.contains($0.target) }
-                    case .add(let item):
-                        all.append(item)
-                    case .dimensions(let id, let w, let h):
-                        if let i = all.firstIndex(where: { $0.id == id }) { all[i].width = w; all[i].height = h }
-                    case .replace(let id, let item):
-                        if let i = all.firstIndex(where: { $0.id == id }) { all[i] = item }
-                    }
-                }
-                nodes = all
+                applyCanvasNodeChanges(changes)
             },
             onEdgesChange: { edges = applyEdgeChanges($0, edges: edges) },
             onConnect: { edges = addEdge($0, edges: edges) },
             connectionLineType: .bezier,
             theme: theme,
             onNodeDoubleClick: { node in
-                if node.type == "macroNode" { currentView = node.id }
+                if node.type == "macroNode" { navigate(to: node.id) }
+            },
+            onInit: {
+                instance.setViewport(savedViewports[currentView ?? "__root__"] ?? .identity, animated: false)
             },
             swiftFlowInstance: instance,
-            onNodeContextMenu: { node in
-                editNodeLabel = node.data.label.isEmpty ? (FlowNodeType(rawValue: node.type)?.title ?? "") : node.data.label
-                editingNodeId = node.id
-            },
             edgeContent: { edge, pathResult in
                 let isActive = runtime.activeEdgeIds.contains(edge.id)
                 let color = edge.style?.strokeColor ?? (isActive ? Color.greenAccent : Color.borderDim)
@@ -1536,11 +1530,7 @@ struct ContentView: View {
                         previewImageURL = urlOrBase64
                     }
                 },
-                onDelete: { id in
-                    let children = nodes.filter { $0.parentId == id }.map(\.id)
-                    nodes.removeAll { $0.id == id || children.contains($0.id) }
-                    edges.removeAll { $0.source == id || $0.target == id || children.contains($0.source) || children.contains($0.target) }
-                },
+                onDelete: { id in instance.deleteElements(nodeIds: [id]) },
                 onRename: { id in
                     let n = nodes.first(where: { $0.id == id })
                     editNodeLabel = n?.data.label.isEmpty == false ? n!.data.label : (FlowNodeType(rawValue: n?.type ?? "")?.title ?? "")
@@ -1559,6 +1549,12 @@ struct ContentView: View {
                 position: .bottomRight
             )
         }
+        .id(currentView ?? "__root__")
+        #if canImport(AppKit)
+        .background(ContextMenuLocationReader { point in
+            contextMenuPosition = canvasScreenToFlow(point)
+        })
+        #endif
         .contextMenu { addNodeContextMenu }
     }
 
@@ -1605,21 +1601,21 @@ struct ContentView: View {
     }
 
     private func addNodeAtMousePosition(type: FlowNodeType) {
-        #if canImport(AppKit)
-        // Get mouse position relative to the window and convert to flow coordinates
-        if let window = NSApp.keyWindow {
-            let mouseInWindow = window.mouseLocationOutsideOfEventStream
-            let flipped = CGPoint(x: mouseInWindow.x, y: window.contentView!.frame.height - mouseInWindow.y)
-            // Subtract top bar height (~45px)
-            let canvasPoint = CGPoint(x: flipped.x, y: flipped.y - 45)
-            let flowPos = canvasScreenToFlow(canvasPoint)
-            addNode(type: type, at: flowPos)
-        } else {
-            addNode(type: type)
-        }
-        #else
-        addNode(type: type)
-        #endif
+        addNode(type: type, at: contextMenuPosition)
+        contextMenuPosition = nil
+    }
+
+    private func navigate(to nodeId: String?) {
+        guard currentView != nodeId else { return }
+        savedViewports[currentView ?? "__root__"] = instance.viewport
+        contextMenuPosition = nil
+        currentView = nodeId
+    }
+
+    private func applyCanvasNodeChanges(_ changes: [NodeChange<FlowNodeData>]) {
+        let updated = graphEditor.apply(changes, nodes: nodes, edges: edges)
+        nodes = updated.nodes
+        edges = updated.edges
     }
 
     // MARK: - Rename Modal
@@ -1691,16 +1687,9 @@ struct ContentView: View {
                 }
 
             if let base64 = previewBase64Image {
-                #if canImport(AppKit)
-                if let commaIdx = base64.firstIndex(of: ","),
-                   let data = Data(base64Encoded: String(base64[base64.index(after: commaIdx)...])),
-                   let nsImg = NSImage(data: data) {
-                    Image(nsImage: nsImg)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .padding(40)
+                if let image = decodedImage(base64) {
+                    image.resizable().aspectRatio(contentMode: .fit).padding(40)
                 }
-                #endif
             } else if let url = previewImageURL {
                 AsyncImage(url: URL(string: url)) { img in
                     img.resizable().aspectRatio(contentMode: .fit)
@@ -1735,8 +1724,9 @@ struct ContentView: View {
     // MARK: - Add Node
 
     private func addNode(type: FlowNodeType, at position: XYPosition? = nil) {
-        let id = "\(type.rawValue)_\(Int.random(in: 1000...9999))"
-        let pos = position ?? XYPosition(x: 300, y: 300)
+        let id = "\(type.rawValue)_\(UUID().uuidString)"
+        let pos = position ?? canvasScreenToFlow(
+            CGPoint(x: instance.viewSize.width / 2, y: instance.viewSize.height / 2))
         let newNode = FNode(
             id: id,
             position: pos,
@@ -1748,24 +1738,197 @@ struct ContentView: View {
     }
 
     private func canvasScreenToFlow(_ screenPoint: CGPoint) -> XYPosition {
-        let zoom = max(instance.viewport.zoom, 0.1)
-        return XYPosition(
-            x: (screenPoint.x - instance.viewport.x) / zoom,
-            y: (screenPoint.y - instance.viewport.y) / zoom
-        )
+        let point = instance.screenToFlowPosition(screenPoint)
+        return XYPosition(x: point.x, y: point.y)
     }
 }
+
+private func decodedImage(_ value: String) -> Image? {
+    let payload = value.firstIndex(of: ",").map { String(value[value.index(after: $0)...]) } ?? value
+    guard let data = Data(base64Encoded: payload) else { return nil }
+    #if canImport(AppKit)
+    guard let image = NSImage(data: data) else { return nil }
+    return Image(nsImage: image)
+    #elseif canImport(UIKit)
+    guard let image = UIImage(data: data) else { return nil }
+    return Image(uiImage: image)
+    #else
+    return nil
+    #endif
+}
+
+```
+
+### DemoGraphEditor.swift
+
+The canvas hands every `NodeChange` batch to `DemoGraphEditor`, which delegates to `applyNodeChanges` and then owns macro bookkeeping: removing a macro node also removes its descendants, and undo/redo that re-adds a macro re-attaches the saved sub-graph, so macro internals never leak into the visible graph.
+
+```swift
+import SwiftFlow
+
+/// The demo owns macro descendants, which are not part of the core's visible graph.
+struct DemoGraphEditor<N: Equatable & Sendable, E: Equatable & Sendable & Hashable> {
+    private var deletedSubgraphs: [String: (nodes: [Node<N>], edges: [FlowEdge<E>])] = [:]
+
+    mutating func apply(_ changes: [NodeChange<N>], nodes: [Node<N>], edges initialEdges: [FlowEdge<E>])
+        -> (nodes: [Node<N>], edges: [FlowEdge<E>]) {
+        var edges = initialEdges
+        var updated = applyNodeChanges(changes, nodes: nodes)
+        let updatedIds = Set(updated.map(\.id))
+        // Undo can remove and re-add the same node in one batch. Only cascade
+        // actual deletions, otherwise an unrelated undo destroys macro contents.
+        let removedRoots = nodes.filter { !updatedIds.contains($0.id) }.map(\.id)
+        var removed = Set<String>()
+        for root in removedRoots {
+            var descendants: Set<String> = [root]
+            var previousCount = -1
+            while descendants.count != previousCount {
+                previousCount = descendants.count
+                for node in nodes where node.parentId.map(descendants.contains) ?? false {
+                    descendants.insert(node.id)
+                }
+            }
+            deletedSubgraphs[root] = (
+                nodes: nodes.filter { descendants.contains($0.id) && $0.id != root },
+                edges: edges.filter { descendants.contains($0.source) || descendants.contains($0.target) })
+            removed.formUnion(descendants)
+        }
+        updated.removeAll { removed.contains($0.id) }
+        edges.removeAll { removed.contains($0.source) || removed.contains($0.target) }
+
+        let previousIds = Set(nodes.map(\.id))
+        for root in updated where !previousIds.contains(root.id) {
+            guard let saved = deletedSubgraphs[root.id] else { continue }
+            var presentIds = Set(updated.map(\.id))
+            for node in saved.nodes where presentIds.insert(node.id).inserted { updated.append(node) }
+            var edgeIds = Set(edges.map(\.id))
+            for edge in saved.edges where presentIds.contains(edge.source) && presentIds.contains(edge.target) {
+                if edgeIds.insert(edge.id).inserted { edges.append(edge) }
+            }
+        }
+        return (updated, edges)
+    }
+}
+```
+
+
+Native menu tracking moves the pointer before the menu appears, so plain `NSView` hit-testing loses the invocation point. This overlay view grabs the click location from a local `NSEvent` monitor first and reports it in the canvas' top-left coordinate convention. macOS only.
+
+
+### ContextMenuLocationReader.swift
+
+```swift
+#if canImport(AppKit)
+import AppKit
+import SwiftUI
+
+/// Records the invocation point before native menu tracking moves the pointer.
+/// The view fills the canvas and uses the same top-left coordinate convention.
+struct ContextMenuLocationReader: NSViewRepresentable {
+    let onLocation: (CGPoint) -> Void
+
+    func makeNSView(context: Context) -> LocationView {
+        let view = LocationView()
+        view.onLocation = onLocation
+        return view
+    }
+
+    func updateNSView(_ view: LocationView, context: Context) {
+        view.onLocation = onLocation
+    }
+
+    static func dismantleNSView(_ view: LocationView, coordinator: ()) {
+        view.removeMonitor()
+    }
+
+    final class LocationView: NSView {
+        var onLocation: ((CGPoint) -> Void)?
+        private var monitor: Any?
+        override var isFlipped: Bool { true }
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            removeMonitor()
+            guard window != nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: [.rightMouseDown, .leftMouseDown]) {
+                [weak self] event in
+                guard let self, event.window == self.window,
+                    event.type == .rightMouseDown || event.modifierFlags.contains(.control)
+                else { return event }
+                let point = self.convert(event.locationInWindow, from: nil)
+                if self.bounds.contains(point) { self.onLocation?(point) }
+                return event
+            }
+        }
+
+        func removeMonitor() {
+            if let monitor { NSEvent.removeMonitor(monitor) }
+            monitor = nil
+        }
+    }
+}
+#endif
+
+```
+
+Standard `App` entry point. On macOS the window uses a hidden title bar, and the background `WindowConfigurator` makes the title bar transparent with a `fullSizeContentView` style mask so the canvas sits edge to edge.
+
+
+### SwiftFlowDemoApp.swift
+
+```swift
+import SwiftUI
+
+@main
+struct SwiftFlowDemoApp: App {
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+                #if canImport(AppKit)
+                .background(WindowConfigurator())
+                #endif
+        }
+        #if os(macOS)
+        .windowStyle(.hiddenTitleBar)
+        #endif
+    }
+}
+
+#if canImport(AppKit)
+import AppKit
+
+struct WindowConfigurator: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            guard let window = view.window else { return }
+            window.titlebarAppearsTransparent = true
+            window.titleVisibility = .hidden
+            window.styleMask.insert(.fullSizeContentView)
+            window.backgroundColor = NSColor(red: 0.043, green: 0.055, blue: 0.078, alpha: 1)
+        }
+        return view
+    }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+#endif
+
 ```
 
 ## Key Concepts Demonstrated
 
 - **`import SwiftFlow`** — Required alongside `import SwiftUI` for all SwiftFlow types.
 - **`FlowEdge<EmptyEdgeData>`** — The canonical type alias for `Edge`. When both `SwiftUI` and `SwiftFlow` are imported, the module `SwiftFlow` and the struct `SwiftFlow` (the canvas view) share the same name, making `Edge` ambiguous with `SwiftUI.Edge`. Use `FlowEdge<EmptyEdgeData>` or fully qualify as `SwiftFlow.Edge<EmptyEdgeData>`.
-- **Node data model** — Typed `FlowNodeData` with an enum `NodeCategory` for per-node styling and icon selection.
-- **Connection handles** — Every node declares a `.target` (input) handle on the left and a `.source` (output) handle on the right.
-- **Selection styling** — Nodes show a colored border and enhanced shadow when selected; handles glow in the node's tint color.
-- **Overlay components** — Dot-grid background, zoom/fit controls (bottom-left), and interactive minimap (bottom-right).
-- **Default edge options** — New connections use `smoothstep` paths with filled arrowheads.
+- **Typed node data** — `FlowNodeData` carries label, value, script, path, param, inputs, key, and model fields; `FlowNodeType` drives dimensions, titles, subtitles, and SF Symbols per node kind.
+- **Dynamic handles** — `getHandles(for:allNodes:)` computes per-node `.source`/`.target` handle placements; macro nodes derive their ports from their `macroInEdge`/`macroOutput` children.
+- **Macro sub-graphs** — Nodes with `parentId` are only rendered while inside the macro view; double-clicking a macro navigates in, and each view's viewport is saved and restored via `SwiftFlowInstance`.
+- **`SwiftFlowInstance`** — Programmatic control: viewport restore in `onInit`, centered placement of new nodes via `screenToFlowPosition`, and deletion through `deleteElements` (respected by the canvas' `onBeforeDelete`/`onDelete` flow).
+- **Overlay components** — Line-pattern `Background`, zoom/fit `Controls` (bottom-left), and an interactive `MiniMap` with a `nodeColorMapper` (bottom-right).
+- **Custom edge content** — `edgeContent` renders the base edge and a traveling glow animation (`EdgeFlowAnimation`) for active edges during execution.
+- **Selection styling** — The `SwiftFlowTheme` (dark variant customized with the demo palette) drives canvas background, edge, handle, and node-selection colors.
+- **Image input** — `.fileImporter` with security-scoped access encodes the picked image to a data-URL base64 string; `decodedImage` decodes it on both AppKit and UIKit.
+- **JavaScript runtime** — `JSContext` evaluates `customScript` nodes, `URLSession` performs (streaming) HTTP requests, and a JSON-path resolver extracts fields for macro outputs.
 
 ## Requirements
 
