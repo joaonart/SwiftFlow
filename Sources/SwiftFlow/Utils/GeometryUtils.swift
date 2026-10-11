@@ -1,5 +1,36 @@
 import Foundation
 
+/// Returns a stable node-relative endpoint before a visible handle publishes
+/// its exact canvas position. Handles conventionally encode their side in the
+/// identifier, for example `tool-top` or `step-right`.
+func fallbackHandlePosition(
+  nodePosition: CGPoint,
+  nodeSize: CGSize,
+  handleId: String?,
+  isSource: Bool
+) -> CGPoint {
+  let normalized = handleId?.lowercased() ?? ""
+  let centerX = nodePosition.x + nodeSize.width / 2
+  let centerY = nodePosition.y + nodeSize.height / 2
+
+  if normalized.hasSuffix("-top") || normalized == "top" {
+    return CGPoint(x: centerX, y: nodePosition.y)
+  }
+  if normalized.hasSuffix("-bottom") || normalized == "bottom" {
+    return CGPoint(x: centerX, y: nodePosition.y + nodeSize.height)
+  }
+  if normalized.hasSuffix("-left") || normalized == "left" {
+    return CGPoint(x: nodePosition.x, y: centerY)
+  }
+  if normalized.hasSuffix("-right") || normalized == "right" {
+    return CGPoint(x: nodePosition.x + nodeSize.width, y: centerY)
+  }
+
+  return isSource
+    ? CGPoint(x: nodePosition.x + nodeSize.width, y: centerY)
+    : CGPoint(x: nodePosition.x, y: centerY)
+}
+
 /// Type alias for bounding box rectangles.
 public typealias Rect = CGRect
 

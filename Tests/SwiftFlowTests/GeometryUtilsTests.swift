@@ -6,6 +6,24 @@ import Testing
 @Suite("GeometryUtils")
 struct GeometryUtilsTests {
 
+  @Test func fallbackHandlePositionUsesSideEncodedInHandleID() {
+    let origin = CGPoint(x: 100, y: 200)
+    let size = CGSize(width: 80, height: 40)
+
+    #expect(fallbackHandlePosition(
+      nodePosition: origin, nodeSize: size, handleId: "tool-top", isSource: false
+    ) == CGPoint(x: 140, y: 200))
+    #expect(fallbackHandlePosition(
+      nodePosition: origin, nodeSize: size, handleId: "tool-bottom", isSource: true
+    ) == CGPoint(x: 140, y: 240))
+    #expect(fallbackHandlePosition(
+      nodePosition: origin, nodeSize: size, handleId: "tool-left", isSource: false
+    ) == CGPoint(x: 100, y: 220))
+    #expect(fallbackHandlePosition(
+      nodePosition: origin, nodeSize: size, handleId: "tool-right", isSource: true
+    ) == CGPoint(x: 180, y: 220))
+  }
+
   @Test func getNodesBoundsBasic() {
     let nodes = [
       Node(id: "1", position: XYPosition(x: 0, y: 0), data: "A"),

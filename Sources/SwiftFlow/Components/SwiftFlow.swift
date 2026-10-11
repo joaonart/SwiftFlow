@@ -592,8 +592,16 @@ public struct SwiftFlow<
       }
     }
     .onPreferenceChange(HandlePositionPreferenceKey.self) { newPositions in
-      handlePositions = newPositions
-      flowState.handlePositions = newPositions
+      // Preference values only contain handles from nodes rendered in the
+      // current viewport. Preserve the last canvas-space position for
+      // temporarily virtualized nodes so their edges do not jump while zooming.
+      let activeNodeIDs = Set(nodes.map(\.id))
+      handlePositions = handlePositions.filter { key, _ in
+        guard let parsed = HandlePositionPreferenceKey.parseKey(key) else { return false }
+        return activeNodeIDs.contains(parsed.nodeId)
+      }
+      handlePositions.merge(newPositions) { _, latest in latest }
+      flowState.handlePositions = handlePositions
     }
     .onPreferenceChange(HandleTypePreferenceKey.self) { newTypes in
       handleTypes = newTypes
@@ -1859,9 +1867,11 @@ public struct SwiftFlow<
     let absPositions = absolutePositions ?? absolutePositionCache
     let absPos = absPositions[node.id] ?? node.position
     let size = nodeSizes[node.id] ?? CGSize(width: 100, height: 50)
-    return isSource
-      ? CGPoint(x: absPos.x + size.width, y: absPos.y + size.height / 2)
-      : CGPoint(x: absPos.x, y: absPos.y + size.height / 2)
+    return fallbackHandlePosition(
+      nodePosition: CGPoint(x: absPos.x, y: absPos.y),
+      nodeSize: size,
+      handleId: handleId,
+      isSource: isSource)
   }
 
   /// Looks up the handle type, trying typed keys first then legacy.
